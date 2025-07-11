@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Bingo Game</title>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      background: #fdfdfd;
+      color: #333;
+    }
+    nav {
+      background: #4CAF50;
+      color: white;
+      padding: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    nav button {
+      background: transparent;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    nav button:hover {
+      text-decoration: underline;
+    }
+    #tabs > div {
+      display: none;
+      padding: 20px;
+    }
+    #tabs > .active {
+      display: block;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    td {
+      border: 2px solid #ccc;
+      background: #fff;
+      padding: 10px;
+      text-align: center;
+      width: 50px;
+      height: 50px;
+      user-select: none;
+      font-size: 18px;
+      transition: background 0.3s;
+    }
+    td:hover {
+      background: #e8f5e9;
+    }
+    .crossed {
+      text-decoration: line-through;
+      background-color: #ffcdd2;
+      color: #b71c1c;
+    }
+    .strike-line {
+      background-color: #fff176 !important;
+    }
+    .bingo-letter {
+      display: inline-block;
+      margin-right: 5px;
+      padding: 5px 10px;
+      border: 2px solid #4CAF50;
+      background: #e8f5e9;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    #numberPool div {
+      padding: 5px;
+      border: 1px solid #ccc;
+      margin: 2px;
+      cursor: grab;
+      width: 30px;
+      text-align: center;
+      background: #f1f8e9;
+      border-radius: 4px;
+    }
+    #numberPool {
+      display: flex;
+      flex-wrap: wrap;
+      max-width: 200px;
+    }
+    .strike-selectable:hover {
+      background-color: #fff9c4;
+      cursor: pointer;
+    }
+    input[type="text"], input[type="number"], input {
+      padding: 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #loadingOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  flex-direction: column;
+}
+
+#loadingOverlay .spinner {
+  border: 5px solid #ccc;
+  border-top: 5px solid #4CAF50;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+#loadingOverlay .text {
+  font-size: 18px;
+  color: #333;
+  font-weight: bold;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+#chatBox {
+  border-left: 2px solid #eee;
+  padding-left: 10px;
+}
+  </style>
+</head>
+<body>
+  <nav>
+    <button onclick="switchTab('home')">Home</button>
+    <button onclick="switchTab('game')">Game</button>
+    <button onclick="location.reload()">Exit Game</button>
+  </nav>
+  <div id="tabs">
+    <div id="home" class="active">
+      <h2>Create or Join Room</h2>
+      <button onclick="createRoom()">Start New Game</button>
+      <input id="joinInput" placeholder="Room ID to join" />
+      <button onclick="joinRoom()">Join Room</button>
+      <p><input id="roomInfo" readonly onclick="this.select()" /></p>
+    </div>
+    <div id="game">
+      <h2>Custom Bingo Game</h2>
+      <p>Connected with: <span id="peerDisplay"></span></p>
+      <div style="display: flex; gap: 20px;">
+  <!-- Left side: Game layout -->
+  <div style="flex: 1;">
+    <h3>Arrange Your Board</h3>
+    <div id="numberPool"></div>
+    <button id="autoFillBtn" onclick="autoFillBoard()">Auto Fill</button>
+    <table id="bingoBoard"></table>
+    <button onclick="readyUp()" id="readyBtn">I'm Ready</button>
+
+    <div id="gamePlay" style="display:none; margin-top: 20px;">
+      <h3>Game On!</h3>
+      <div>Countdown: <span id="countdown">5</span></div>
+      <p>Your turn: <span id="isTurn"></span></p>
+      <p>Called Numbers: <span id="calledNumbers"></span></p>
+      <div id="bingoLetters"></div>
+      <button onclick="claimBingo()" id="bingoBtn" style="display:none">Call BINGO!</button>
+      <div id="strikeOptions" style="margin-top: 10px;">
+        <p><strong>Hint:</strong> Tap a full crossed line (row, column, or diagonal) to strike it.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right side: Chat box -->
+  <div id="chatBox" style="width: 300px;">
+    <h3>Live Chat</h3>
+    <div id="chatMessages" style="border:1px solid #ccc; padding:10px; height:300px; overflow-y:auto; background:#fafafa; border-radius:4px;"></div>
+    <div style="display:flex; margin-top:5px;">
+      <input type="text" id="chatInput" placeholder="Type a message..." style="flex:1; padding:5px;"/>
+      <button onclick="sendChatMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </div>
+  <script>
+    let chatHistory = [];
+    function showLoading(message) {
+  const overlay = document.getElementById('loadingOverlay');
+  overlay.querySelector('.text').textContent = message;
+  overlay.style.display = 'flex';
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  displayChatMessage('You', msg);
+  conn.send({ type: 'chat', msg });
+  input.value = '';
+}
+function displayChatMessage(sender, msg) {
+  const chat = document.getElementById('chatMessages');
+  const message = document.createElement('div');
+  message.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+  chat.appendChild(message);
+  chat.scrollTop = chat.scrollHeight;
+}
+    let peer, conn, myId, isHost = false, isMyTurn = false, drawnNumbers = [], readyStatus = {}, bingoLetters = 0;
+    let struckLines = new Set();
+
+    function switchTab(tab) {
+      document.querySelectorAll('#tabs > div').forEach(div => div.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+    }
+
+    function createRoom() {
+        showLoading("Creating game...");
+      isHost = true;
+      peer = new Peer();
+      peer.on('open', id => {
+        myId = id;
+        document.getElementById('roomInfo').value = id;
+        setupBoard();
+         hideLoading();
+      });
+      peer.on('connection', connection => {
+        conn = connection;
+        setupConnection();
+        switchTab('game');
+      });
+    }
+
+    function joinRoom() {
+      const roomId = document.getElementById('joinInput').value;
+      showLoading("Joining game...");
+      peer = new Peer();
+      peer.on('open', id => {
+        myId = id;
+        setupBoard();
+        conn = peer.connect(roomId);
+        conn.on('open', () => {
+          setupConnection();
+          switchTab('game');
+           hideLoading();
+        });
+      });
+    }
+
+    function setupConnection() {
+      document.getElementById('peerDisplay').textContent = conn.peer;
+      conn.on('data', data => {
+        if (data.type === 'chat') {
+            displayChatMessage("Opponent", data.msg);
+        }
+        if (data.type === 'gameover') handleLoss();
+        if (data.type === 'ready') {
+          readyStatus[data.id] = true;
+          checkBothReady();
+        }
+        if (data.type === 'start') {
+          beginGame(data.first);
+        }
+        if (data.type === 'cross') {
+          markCell(data.cellText);
+        }
+        if (data.type === 'turn') {
+          isMyTurn = true;
+          updateTurnDisplay();
+        }
+      });
+    }
+
+    function setupBoard() {
+  const pool = document.getElementById('numberPool');
+  const table = document.getElementById('bingoBoard');
+  pool.innerHTML = '';
+  table.innerHTML = '';
+  const numbers = [...Array(25).keys()].map(x => x + 1);
+  numbers.forEach(n => {
+    const div = document.createElement('div');
+    div.draggable = true;
+    div.textContent = n;
+    div.ondragstart = e => {
+      e.dataTransfer.setData('text', n);
+      e.dataTransfer.setData('fromPool', 'true');
+    };
+    pool.appendChild(div);
+  });
+
+  const allCells = [];
+
+  for (let i = 0; i < 5; i++) {
+    const row = document.createElement('tr');
+    for (let j = 0; j < 5; j++) {
+      const cell = document.createElement('td');
+      cell.setAttribute('data-index', allCells.length);
+      allCells.push(cell);
+
+      cell.draggable = true;
+
+      cell.ondragstart = e => {
+        if (cell.textContent) {
+          e.dataTransfer.setData('text', cell.textContent);
+          e.dataTransfer.setData('sourceIndex', cell.getAttribute('data-index'));
+          e.dataTransfer.setData('fromPool', 'false');
+        }
+      };
+
+      cell.ondragover = e => e.preventDefault();
+
+      cell.ondrop = e => {
+        const num = e.dataTransfer.getData('text');
+        const fromPool = e.dataTransfer.getData('fromPool') === 'true';
+        const sourceIndex = e.dataTransfer.getData('sourceIndex');
+
+        if (fromPool) {
+          if (!cell.textContent) {
+            cell.textContent = num;
+            [...pool.children].forEach(d => {
+              if (d.textContent === num) d.remove();
+            });
+          }
+        } else {
+          const sourceCell = allCells[parseInt(sourceIndex)];
+          if (sourceCell !== cell) {
+            const temp = cell.textContent;
+            cell.textContent = sourceCell.textContent;
+            sourceCell.textContent = temp;
+          }
+        }
+      };
+
+      cell.onclick = () => handleStrike(cell);
+      cell.ontouchstart = (e) => { e.preventDefault(); handleStrike(cell); };
+      row.appendChild(cell);
+    }
+    table.appendChild(row);
+  }
+}
+
+    function autoFillBoard() {
+      const pool = document.getElementById('numberPool');
+      const numbers = [...Array(25).keys()].map(x => x + 1).sort(() => Math.random() - 0.5);
+      const cells = document.querySelectorAll('#bingoBoard td');
+      pool.innerHTML = '';
+      cells.forEach((cell, i) => cell.textContent = numbers[i]);
+    }
+
+    function readyUp() {
+      const filled = [...document.querySelectorAll('#bingoBoard td')].every(td => td.textContent);
+      if (!filled) return Swal.fire('Fill all 25 cells first!');
+      readyStatus[myId] = true;
+      conn.send({ type: 'ready', id: myId });
+      checkBothReady();
+    }
+
+    function checkBothReady() {
+      if (readyStatus[myId] && readyStatus[conn.peer]) {
+        const first = Math.random() < 0.5 ? myId : conn.peer;
+        if (isHost) conn.send({ type: 'start', first });
+        beginGame(first);
+      }
+    }
+
+    function beginGame(firstPlayer) {
+         document.getElementById('autoFillBtn').style.display = 'none';
+      document.getElementById('readyBtn').style.display = 'none';
+      document.getElementById('gamePlay').style.display = 'block';
+      let countdown = 5;
+      const cdInterval = setInterval(() => {
+        document.getElementById('countdown').textContent = countdown;
+        countdown--;
+        if (countdown < 0) {
+          clearInterval(cdInterval);
+          isMyTurn = (firstPlayer === myId);
+          updateTurnDisplay();
+        }
+      }, 1000);
+    }
+
+    function updateTurnDisplay() {
+      document.getElementById('isTurn').textContent = isMyTurn ? 'Yes' : 'No';
+    }
+
+    function markCell(num) {
+      drawnNumbers.push(num);
+      document.getElementById('calledNumbers').textContent = drawnNumbers.join(', ');
+      document.querySelectorAll('#bingoBoard td').forEach(td => {
+        if (td.textContent === num) td.classList.add('crossed');
+      });
+    }
+
+    function handleStrike(cell) {
+      if (isMyTurn && cell.textContent && !cell.classList.contains('crossed')) {
+        markCell(cell.textContent);
+        conn.send({ type: 'cross', cellText: cell.textContent });
+        conn.send({ type: 'turn' });
+        isMyTurn = false;
+        updateTurnDisplay();
+      }
+
+      const allCells = Array.from(document.querySelectorAll('#bingoBoard td'));
+      const index = allCells.indexOf(cell);
+      const i = Math.floor(index / 5);
+      const j = index % 5;
+      const row = allCells.slice(i * 5, i * 5 + 5);
+      const col = allCells.filter((_, idx) => idx % 5 === j);
+      const diag1 = [0, 6, 12, 18, 24].map(i => allCells[i]);
+      const diag2 = [4, 8, 12, 16, 20].map(i => allCells[i]);
+
+      if (row.every(td => td.classList.contains('crossed'))) strike(row, 'r' + i);
+      if (col.every(td => td.classList.contains('crossed'))) strike(col, 'c' + j);
+      if ([0,6,12,18,24].includes(index) && diag1.every(td => td.classList.contains('crossed'))) strike(diag1, 'd1');
+      if ([4,8,12,16,20].includes(index) && diag2.every(td => td.classList.contains('crossed'))) strike(diag2, 'd2');
+    }
+
+    function strike(cells, key) {
+      if (struckLines.has(key)) return;
+      struckLines.add(key);
+      cells.forEach(td => td.classList.add('strike-line'));
+      bingoLetters++;
+      const bingoDiv = document.getElementById('bingoLetters');
+      bingoDiv.innerHTML = 'BINGO'.slice(0, bingoLetters).split('').map(l => `<span class="bingo-letter">${l}</span>`).join('');
+      if (bingoLetters >= 5) document.getElementById('bingoBtn').style.display = 'inline-block';
+    }
+
+    function claimBingo() {
+      Swal.fire('🎉 BINGO!', 'You win!', 'success').then(() => location.reload());
+      conn.send({ type: 'gameover' });
+    }
+
+    function handleLoss() {
+      Swal.fire('💔 You Lost', 'Better luck next time!', 'error').then(() => location.reload());
+    }
+
+    if (location.hash) {
+      document.getElementById('joinInput').value = location.hash.slice(1);
+      window.addEventListener('load', () => {
+        joinRoom();
+      });
+    }
+  </script>
+  <div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="text">Loading...</div>
+</div>
+</body>
+</html>
